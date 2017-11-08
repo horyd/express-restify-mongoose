@@ -155,6 +155,37 @@ module.exports = function (model, options, excludedMap) {
     }, errorHandler(req, res, next))
   }
 
+  function modifyObjectRaw(req, res, next) {
+    req.body = options.filter.filterObject(req.body || {}, {
+      access: req.access,
+      populate: req._ermQueryOptions.populate
+    });
+
+    delete req.body._id;
+
+    if (model.schema.options.versionKey) {
+      delete req.body[model.schema.options.versionKey];
+    }
+
+    options.contextFilter(model, req, function (filteredContext) {
+      findById(filteredContext, req.params.id).findOneAndUpdate({}, req.body, {
+        new: true,
+        runValidators: options.runValidators
+      }).exec().then(function (item) {
+        return model.populate(item, req._ermQueryOptions.populate || []);
+      }).then(function (item) {
+        if (!item) {
+          return errorHandler(req, res, next)(new Error(http.STATUS_CODES[404]));
+        }
+
+        req.erm.result = item;
+        req.erm.statusCode = 200;
+
+        next();
+      }, errorHandler(req, res, next));
+    });
+  }
+
   function modifyObject (req, res, next) {
     req.body = options.filter.filterObject(req.body || {}, {
       access: req.access,
@@ -234,5 +265,5 @@ module.exports = function (model, options, excludedMap) {
     }
   }
 
-  return { getItems, getCount, getItem, getShallow, createObject, modifyObject, deleteItems, deleteItem }
+  return { getItems, getCount, getItem, getShallow, createObject, modifyObject, modifyObjectRaw, deleteItems, deleteItem }
 }
